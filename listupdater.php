@@ -9,10 +9,9 @@
  */
 include("config.php");
 require("phpgsb.class.php");
-$phpgsb = new phpGSB($config['db'], $config['user'], $config['pass'], $config['host']);
+$phpgsb = new phpGSB($config['db'], $config['user'], $config['pass'], $config['host'], true);
 
 // Obtain an API key from: http://code.google.com/apis/safebrowsing/key_signup.html
 $phpgsb->apikey = $config['api_key'];
 $phpgsb->usinglists = array('googpub-phish-shavar','goog-malware-shavar');
 $phpgsb->runUpdate();
-$phpgsb->close();
