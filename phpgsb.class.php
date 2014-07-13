@@ -1432,7 +1432,7 @@ class phpGSB {
     /**
      * Does a full URL lookup on given lists, will check if its in database, if
      * slight match there then will do a full-hash lookup on GSB,
-     * returns (bool) true on match and (bool) false on negative.
+     * listname on match and (bool) false on negative.
      */
     public function doLookup($url) {
         $lists = $this->usinglists;
@@ -1453,8 +1453,8 @@ class phpGSB {
         $buildprequery = implode("OR", $buildprequery);
 
         $matches = array();
-        foreach ($lists as $key => $value) {
-            $buildtrunk = $value . '-a';
+        foreach ($lists as $key => $listname) {
+            $buildtrunk = $listname . '-a';
             $hostsStm = $this->db->prepare('SELECT count, hostkey, chunk_num FROM `' . $buildtrunk . '-hosts` WHERE hostkey = ?');
 
             //Loop over each list
@@ -1496,17 +1496,17 @@ class phpGSB {
 
                             // Before we send off any requests first check
                             // whether its in sub table
-                            if (!$this->subCheck($value, $prematches, "prefix") &&
+                            if (!$this->subCheck($listname, $prematches, "prefix") &&
                                  $this->doFullLookup($prematches, $prefixes)) {
-                                return true;
+                                return $listname;
                             }
                         }
 
                         // If we didn't find matches then do nothing (keep
                         // looping till end and it'll return negative)
-                    } elseif (!$this->subCheck($value, array(array($row['hostkey'], $row['chunk_num'])), "hostkey") &&
+                    } elseif (!$this->subCheck($listname, array(array($row['hostkey'], $row['chunk_num'])), "hostkey") &&
                              $this->doFullLookup(array(array($row['hostkey'], $row['chunk_num'])), $hostkeys)) {
-                        return true;
+                        return $listname;
                     }
                 }
             }
