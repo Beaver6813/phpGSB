@@ -7,8 +7,9 @@
 
  * INITIAL INSTALLER - RUN ONCE (or more than once if you're adding a new list!)
  */
-require ("phpgsb.class.php");
-$phpgsb = new phpGSB($config['db'], $config['user'], $config['pass'], $config['host']);
+include('config.php');
+require("phpgsb.class.php");
+$phpgsb = new phpGSB($config['db'], $config['user'], $config['pass'], $config['host'], true);
 $phpgsb->usinglists = array(
     'googpub-phish-shavar',
     'goog-malware-shavar'
