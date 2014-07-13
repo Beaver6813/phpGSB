@@ -1,11 +1,12 @@
 <?php
-/*
- phpGSB - PHP Google Safe Browsing Implementation
- Version 0.2.4
- Released under New BSD License (see LICENSE)
- Copyright (c) 2010-2012, Sam Cleaver (Beaver6813, Beaver6813.com)
- All rights reserved.
+/**
+ * phpGSB - PHP Google Safe Browsing Implementation
+ * Version 0.2.4
+ * Released under New BSD License (see LICENSE)
+ * Copyright (c) 2010-2012, Sam Cleaver (Beaver6813, Beaver6813.com)
+ * All rights reserved.
  */
+
 class phpGSB {
     public $apikey = "";
     private $version = "0.2";
@@ -120,17 +121,17 @@ class phpGSB {
      * Simple logic function to calculate timeout based on the number of previous errors
      */
     private function calc($errors) {
-        //According to Developer Guide Formula
+        // According to Developer Guide Formula
         if ($errors == 1) {
-            //According to Developer Guide (1st error, wait a minute)
+            // According to Developer Guide (1st error, wait a minute)
             return 60;
         } elseif ($errors > 5) {
-            //According to Developer Guide (Above 5 errors check every 4 hours)
+            // According to Developer Guide (Above 5 errors check every 4 hours)
             return 28800;
         } else {
-            //According to Developer Guide we simply double up our timeout each
+            // According to Developer Guide we simply double up our timeout each
             // time and use formula:
-            //(Adapted to be relative to errors) ( ((2^$errors) * 7.5) *
+            // (Adapted to be relative to errors) ( ((2^$errors) * 7.5) *
             // (decimalrand(0,1) + 1)) to produce
             // a result between: 120min-240min for example
             return floor((pow(2, $errors) * 7.5) * ((rand(0, 1000) / 1000) + 1));
@@ -142,10 +143,8 @@ class phpGSB {
      * for next check
      */
     private function Backoff($errdata = false, $type) {
-        if ($type == "data")
-            $file = 'nextcheck.dat';
-        else
-            $file = 'nextcheckl.dat';
+        $file = ($type == 'data' ? 'nextcheck.dat' : 'nextcheckl.dat');
+
         $curstatus = explode('||', file_get_contents($this->pingfilepath . $file));
         $curstatus[1] = $curstatus[1] + 1;
         $seconds = $this->calc($curstatus[1]);
@@ -167,6 +166,7 @@ class phpGSB {
         } else {
             $until = time() + $seconds . '||';
         }
+        
         file_put_contents($this->pingfilepath . 'nextcheck.dat', $until);
     }
 
@@ -175,15 +175,14 @@ class phpGSB {
      * start of script)
      */
     private function checkTimeout($type) {
-        if ($type == "data")
-            $file = 'nextcheck.dat';
-        else
-            $file = 'nextcheckl.dat';
+        $file = ($type == 'data' ? 'nextcheck.dat' : 'nextcheckl.dat');
+
         $curstatus = explode('||', file_get_contents($this->pingfilepath . $file));
         if (time() < $curstatus[0]) {
             $this->fatalerror("Must wait another " . ($curstatus[0] - time()) . " seconds before another request");
-        } else
-            $this->outputmsg("Allowed to request");
+        }
+        
+        $this->outputmsg("Allowed to request");
     }
 
     /**
@@ -197,8 +196,9 @@ class phpGSB {
         curl_setopt($ch, CURLOPT_HEADER, 0);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 
-        if (is_array($options))
+        if (is_array($options)) {
             curl_setopt_array($ch, $options);
+        }
 
         $data = curl_exec($ch);
         $info = curl_getinfo($ch);
@@ -207,6 +207,7 @@ class phpGSB {
         if ($followbackoff && $info['http_code'] > 299) {
             $this->Backoff($info, $followbackoff);
         }
+        
         return array(
             $info,
             $data
@@ -219,9 +220,11 @@ class phpGSB {
      * Resets lists database, only called if GSB issues r:resetdatabase
      */
     private function resetDatabase() {
-        //Lord knows why they would EVER issue this request!
-        if (!empty($this->adminemail))
+        // Lord knows why they would EVER issue this request!
+        if (!empty($this->adminemail)) {
             mail($this->adminemail, 'Reset Database Request Issued', 'For some crazy unknown reason GSB requested a database reset at ' . time());
+        }
+        
         foreach ($this->usinglists as $value) {
             $this->query("TRUNCATE TABLE `$value-s-index`");
             $this->query("TRUNCATE TABLE `$value-s-hosts`");
@@ -237,7 +240,6 @@ class phpGSB {
      */
     private function processChunks($data, $listname) {
         $len = strlen($data);
-        var_dump($len);
         $offset = $z = 0;
         while ($offset < $len) {
             $x = strpos($data, ':', $offset);
