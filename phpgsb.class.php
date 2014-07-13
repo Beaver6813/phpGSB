@@ -27,6 +27,9 @@ class phpGSB {
     private $transtarted = false;
     private $transenabled = true;
     private $pingfilepath = "";
+    
+    private $debug = false;
+    public $debugLog = array();
 
     private $db;
 
@@ -42,11 +45,23 @@ class phpGSB {
     }
 
     private function close() {
-        $this->outputmsg("Closing phpGSB. (Peak Memory: " . (round(memory_get_peak_usage() / 1048576, 3)) . "MB)");
+        $this->log("Closing phpGSB. (Peak Memory: " . (round(memory_get_peak_usage() / 1048576, 3)) . "MB)");
     }
 
     public function silent() {
         $this->verbose = false;
+    }
+
+    public function enableDebug() {
+        $this->debug = true;
+    }
+
+    public function resetDebugLog() {
+        $this->debugLog = array();
+    }
+
+    public function setApiKey($apikey) {
+        $this->apikey = $apikey;
     }
 
     public function trans_disable() {
@@ -60,7 +75,7 @@ class phpGSB {
     private function trans_begin() {
         if ($this->transenabled) {
             $this->transtarted = true;
-            $this->outputmsg("Begin MySQL Transaction");
+            $this->log("Begin MySQL Transaction");
             $this->db->query('START TRANSACTION;');
         }
     }
@@ -68,7 +83,7 @@ class phpGSB {
     private function trans_commit() {
         if ($this->transtarted && $this->transenabled) {
             $this->transtarted = false;
-            $this->outputmsg("Comitting Transaction");
+            $this->log("Comitting Transaction");
             $this->db->query('COMMIT;');
         }
     }
@@ -76,7 +91,7 @@ class phpGSB {
     private function trans_rollback() {
         if ($this->transtarted && $this->transenabled) {
             $this->transtarted = false;
-            $this->outputmsg("Rolling Back Transaction");
+            $this->log("Rolling Back Transaction");
             $this->db->query('ROLLBACK;');
         }
     }
@@ -85,7 +100,7 @@ class phpGSB {
      * Function to output messages, used instead of echo,
      * will make it easier to have a verbose switch in later releases
      */
-    private function outputmsg($msg) {
+    private function log($msg) {
         if ($this->verbose) {
             echo $msg . "\n";
         }
@@ -102,7 +117,7 @@ class phpGSB {
         }
         
         $this->trans_rollback();
-        throw Exception($msg);
+        throw new Exception($msg);
     }
 
     /**
@@ -177,12 +192,12 @@ class phpGSB {
     private function checkTimeout($type) {
         $file = ($type == 'data' ? 'nextcheck.dat' : 'nextcheckl.dat');
 
-        $curstatus = explode('||', file_get_contents($this->pingfilepath . $file));
+        $curstatus = explode('||', @file_get_contents($this->pingfilepath . $file));
         if (time() < $curstatus[0]) {
             $this->fatalerror("Must wait another " . ($curstatus[0] - time()) . " seconds before another request");
         }
         
-        $this->outputmsg("Allowed to request");
+        $this->log("Allowed to request");
     }
 
     /**
@@ -240,7 +255,7 @@ class phpGSB {
      */
     private function processChunks($data, $listname) {
         $len = strlen($data);
-        $offset = $z = 0;
+        $offset = 0;
         while ($offset < $len) {
             $x = strpos($data, ':', $offset);
             $type = substr($data, $offset, $x-$offset);
@@ -281,7 +296,7 @@ class phpGSB {
             }
 
             if ($type != 'a' && $type != 's') {
-                $this->outputmsg("DISCARDED CHUNKNUM: $chunknum (Had no valid label)");
+                $this->log("DISCARDED CHUNKNUM: $chunknum (Had no valid label)");
                 continue;
             }
 
@@ -305,7 +320,7 @@ class phpGSB {
                     for ($i = 0; $i < $row['count']; $i++) {
                         $pair = array();
                         if ($type == 's') {
-                            $pair['addchunknum'] = substr($chunkdata, $chunkOffset, 8);
+                            $pair['addchunknum'] = hexdec(substr($chunkdata, $chunkOffset, 8));
                             $chunkOffset += 8;
                         }
                         $pair['prefix'] = substr($chunkdata, $chunkOffset, ($hashlen * 2));
@@ -314,7 +329,7 @@ class phpGSB {
                     }
                 } elseif ($row['count'] == 0 && $type == 's') {
                     $row['pairs'][] = array(
-                        'addchunknum' => substr($chunkdata, $chunkOffset, 8)
+                        'addchunknum' => hexdec(substr($chunkdata, $chunkOffset, 8))
                     );
                     $chunkOffset += 8;
                 } elseif ($row['count'] < 0) {
@@ -327,7 +342,6 @@ class phpGSB {
             }
             $this->saveChunkPart($dataArr, ($type == 's' ? 'SUB' : "ADD"), $listname);
             unset($dataArr);
-            $z++;
         }
         return true;
     }
@@ -481,7 +495,7 @@ class phpGSB {
         $params = array();
         $buildtrunk = $listname . '-' . $mode;
         if (strpos($range, '-') !== false) {
-            $params = explode('-', trim($range), 1);
+            $params = explode('-', trim($range), 2);
             $clause = "`chunk_num` >= ? AND `chunk_num` <= ?";
         } else {
             $params[] = $range;
@@ -539,7 +553,7 @@ class phpGSB {
         }
 
         if (!preg_match_all('/i:(.+?)\n(.+?)(?=i:|$)/s', $result[1], $blocks, PREG_PATTERN_ORDER)) {
-            $this->outputmsg('No data available in list');
+            $this->log('No data available in list');
             return true;
         }
 
@@ -554,7 +568,7 @@ class phpGSB {
                     case 'u':
                         $chunkdata = $this->googleDownloader('http://' . $value, false, "data");
                         $processed = $this->processChunks($chunkdata[1], $listname);
-                        $this->outputmsg("Saved a chunk file: " . $value);
+                        $this->log("Saved a chunk file: " . $value);
                         break;
                     case 'sd':
                     case 'ad':
@@ -581,7 +595,7 @@ class phpGSB {
             $require .= $this->formattedRequest($value);
         }
 
-        $this->outputmsg("Using $require");
+        $this->log("Using $require");
         $this->getData($require);
     }
 
@@ -631,9 +645,9 @@ class phpGSB {
             $canit = self::canonicalizeURL($key);
             $canit = $canit['GSBURL'];
             if ($canit == $value) {
-                outputmsg("<span style='color:green'>PASSED: $key</span>");
+                $this->log("<span style='color:green'>PASSED: $key</span>");
             } else {
-                outputmsg("<span style='color:red'>INVALid: <br>ORIGINAL: $key<br>EXPECTED: $value<br>RECIEVED: $canit<br> </span>");
+                $this->log("<span style='color:red'>INVALid: <br>ORIGINAL: $key<br>EXPECTED: $value<br>RECIEVED: $canit<br> </span>");
             }
         }
     }
@@ -647,7 +661,7 @@ class phpGSB {
      * Thanks to mikegillis677 for finding the seg. fault issue in the old function.
      * Passed validateMethod() check on 17/01/12
      */
-    static function j_parseUrl($url) {
+    private static function j_parseUrl($url) {
         $strict = '/^(?:([^:\/?#]+):)?(?:\/\/\/?((?:(([^:@]*):?([^:@]*))?@)?([^:\/?#]*)(?::(\d*))?))?(((?:\/(\w:))?((?:[^?#\/]*\/)*)([^?#]*))(?:\?([^#]*))?(?:#(.*))?)/';
         $loose = '/^(?:(?![^:@]+:[^:@\/]*@)([^:\/?#.]+):)?(?:\/\/\/?)?((?:(([^:@]*):?([^:@]*))?@)?([^:\/?#]*)(?::(\d*))?)(((?:\/(\w:))?(\/(?:[^?#](?![^?#\/]*\.[^?#\/.]+(?:[?#]|$)))*\/?)?([^?#\/]*))(?:\?([^#]*))?(?:#(.*))?)/';
         preg_match($loose, $url, $match);
@@ -712,14 +726,14 @@ class phpGSB {
     /**
      * Regex to check if its a numerical IP address
      */
-    static function is_ip($ip) {
+    private static function is_ip($ip) {
         return preg_match("/^([1-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])" . "(\.([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])){3}$/", $ip);
     }
 
     /**
      * Checks if input is in hex format
      */
-    static function is_hex($x) {
+    private static function is_hex($x) {
         // Relys on the fact that hex often includes letters meaning PHP will
         // disregard the string
         if (($x + 3) == 3) {
@@ -732,7 +746,7 @@ class phpGSB {
     /**
      * Checks if input is in octal format
      */
-    static function is_octal($x) {
+    private static function is_octal($x) {
         //Relys on the fact that in IP addressing octals must begin with a 0 to
         // denote octal
         return substr($x, 0, 1) == 0;
@@ -741,7 +755,7 @@ class phpGSB {
     /**
      * Converts hex or octal input into decimal
      */
-    static function hexoct2dec($value) {
+    private static function hexoct2dec($value) {
         //As this deals with parts in IP's we can be more exclusive
         if (substr_count(substr($value, 0, 2), '0x') > 0 && self::is_hex($value)) {
             return hexdec($value);
@@ -755,7 +769,7 @@ class phpGSB {
     /**
      * Converts IP address part in HEX to decimal
      */
-    static function iphexdec($hex) {
+    private static function iphexdec($hex) {
         //Removes any leading 0x (used to denote hex) and then and leading 0's)
         $temp = str_replace('0x', '', $hex);
         $temp = ltrim($temp, "0");
@@ -765,7 +779,7 @@ class phpGSB {
     /**
      * Converts full IP address in HEX to decimal
      */
-    static function hexIPtoIP($hex) {
+    private static function hexIPtoIP($hex) {
         // Remove hex identifier and leading 0's (not significant)
         $tempip = str_replace('0x', '', $hex);
         $tempip = ltrim($tempip, "0");
@@ -798,7 +812,7 @@ class phpGSB {
      * Checks if an IP provided in either hex, octal or decimal is in fact
      * an IP address. Normalises to a four part IP address.
      */
-    static function isValid_IP($ip) {
+    private static function isValid_IP($ip) {
         // First do a simple check, if it passes this no more needs to be done
         if (self::is_ip($ip)) {
             return $ip;
@@ -889,7 +903,7 @@ class phpGSB {
      * or equal to 127 (some of those are non alpha-numeric and so urlencode
      * on its own won't work).
      */
-    static function flexURLEncode($url, $ignorehash = false) {
+    private static function flexURLEncode($url, $ignorehash = false) {
         // Had to write another layer as built in PHP urlencode() escapes all non
         // alpha-numeric
         // google states to only urlencode if its below 32 or above or equal to
@@ -912,7 +926,7 @@ class phpGSB {
     /**
      * Canonicalize a full URL according to Google's definition.
      */
-    static function canonicalizeURL($url) {
+    private static function canonicalizeURL($url) {
         // Remove line feeds, return carriages, tabs, vertical tabs
         $finalurl = trim(str_replace(array(
             "\x09",
@@ -1044,14 +1058,14 @@ class phpGSB {
     /**
      * SHA-256 input (short method).
      */
-    static function sha256($data) {
+    private static function sha256($data) {
         return hash('sha256', $data);
     }
 
     /**
      * Make hostkeys for use in a lookup
      */
-    static function makeHostKey($host, $usingip) {
+    private static function makeHostKey($host, $usingip) {
         if ($usingip) {
             $hosts = array($host . "/");
         } else {
@@ -1085,7 +1099,7 @@ class phpGSB {
     /**
      * Hash up a list of values from makeprefixes() (will possibly be combined into that function at a later date
      */
-    static function makeHashes($prefixarray) {
+    private static function makeHashes($prefixarray) {
         if (count($prefixarray) > 0) {
             $returnprefixes = array();
             foreach ($prefixarray as $value) {
@@ -1104,7 +1118,7 @@ class phpGSB {
     /**
      * Make URL prefixes for use after a hostkey check
      */
-    static function makeprefixes($host, $path, $query, $usingip) {
+    private static function makeprefixes($host, $path, $query, $usingip) {
         $prefixes = array();
 
         // Exact hostname in the url
@@ -1170,21 +1184,22 @@ class phpGSB {
      * request
      */
     private function processFullLookup($data) {
-        $clonedata = $data;
         $extracthash = array();
-        while (strlen($clonedata) > 0) {
-            $splithead = explode("\n", $clonedata, 2);
-            $chunkinfo = explode(':', $splithead[0]);
-            $listname = $chunkinfo[0];
-            $addchunk = $chunkinfo[1];
-            $chunklen = $chunkinfo[2];
-            $chunkdata = bin2hex(substr($splithead[1], 0, $chunklen));
-            while (strlen($chunkdata) > 0) {
-                $extracthash[$listname][$addchunk] = substr($chunkdata, 0, 64);
-                $chunkdata = substr($chunkdata, 64);
+
+        $len = strlen($data);
+        $offset = 0;
+        while ($offset < $len) {
+            $x = strpos($data, "\n", $offset);
+            $head = substr($data, $offset, $x-$offset);
+            $offset = $x+1;
+            list($listname, $addchunk, $chunklen) = explode(':', $head, 3);
+            
+            if ($chunklen > 0) {
+                $extracthash[$listname][$addchunk] = bin2hex(substr($data, $offset, $chunklen));
+                $offset += $chunklen;
             }
-            $clonedata = substr($splithead[1], $chunklen);
         }
+
         return $extracthash;
     }
 
@@ -1196,7 +1211,7 @@ class phpGSB {
         $buildtrunk = $listname . "-a";
 
         // First check hosts
-        $stm = $this->query("SELECT * FROM `" . $buildtrunk  ."-hosts` WHERE `hostkey` = ? AND `chunk_num` = ? AND fulllhash = '' LIMIT 1", array($prefix, $chunknum));
+        $stm = $this->query("SELECT * FROM `" . $buildtrunk  ."-hosts` WHERE `hostkey` = ? AND `chunk_num` = ? AND fullhash = '' LIMIT 1", array($prefix, $chunknum));
         if ($stm->rowCount() > 0) {
             $row = $stm->fetch(\PDO::FETCH_ASSOC);
             // We've got a live one! Insert the full hash for it
@@ -1232,11 +1247,10 @@ class phpGSB {
                 );
             }
 
-            $stm = $this->query("SELECT p.fullhash, h.chunk_num
-                                FROM
-                                    `" . $buildtrunk . "-prefixes` p
-                                    JOIN `" . $buildtrunk . "-hosts` h ON (p.hostkey = h.hostkey)
-                                    WHERE p.`prefix` = ? AND p.`fullhash` != '' AND h.count > 0", array($prefix));
+            $stm = $this->query("SELECT p.fullhash, h.chunk_num FROM
+                                `" . $buildtrunk . "-prefixes` p
+                                JOIN `" . $buildtrunk . "-hosts` h ON (p.hostkey = h.hostkey)
+                                WHERE p.`prefix` = ? AND p.`fullhash` != '' AND h.count > 0", array($prefix));
             if ($stm->rowCount() > 0) {
                 $row = $stm->fetch(\PDO::FETCH_ASSOC);
                 return array(
@@ -1250,11 +1264,13 @@ class phpGSB {
     }
 
     /**
-     * Do a full-hash lookup based on prefixes provided, returns (bool) true on a match and (bool) false on no match.
+     * Do a full-hash lookup based on prefixes provided, 
+     * returns (bool) true on a match and (bool) false on no match.
      */
     private function doFullLookup($prefixes, $originals) {
         // Store copy of original prefixes
         $cloneprefixes = $prefixes;
+        
         // They should really all have the same prefix size.. we'll just check one
         $prefixsize = strlen($prefixes[0][0]) / 2;
         $length = count($prefixes) * $prefixsize;
@@ -1277,29 +1293,30 @@ class phpGSB {
             $prefixes[$key] = pack("H*", $value[0]);
         }
         // No cache matches so we continue with request
-        $body = "$prefixsize:$length\n" . implode("", $prefixes);
+        $body = $prefixsize . ":" . $length . "\n" . implode("", $prefixes);
 
         $buildopts = array(
             CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => $body
         );
-        $result = $this->googleDownloader("http://safebrowsing.clients.google.com/safebrowsing/gethash?client=api&apikey=" . $this->apikey . "&appver=" . $this->version . "&pver=" . $this->apiversion, $buildopts, "lookup");
-
+        
+        $result = $this->googleDownloader("http://safebrowsing.clients.google.com/safebrowsing/gethash?client=api&apikey=" . 
+                                          $this->apikey . "&appver=" . $this->version . "&pver=" . $this->apiversion, $buildopts, "lookup");
+        
         if ($result[0]['http_code'] == 200 && !empty($result[1])) {
-            //Extract hashes from response
-            $extractedhashes = $this->processFullLookup($result[1]);
-            //Loop over each list
-            foreach ($extractedhashes as $key => $value) {
-                //Loop over each value in each list
-                foreach ($value as $newkey => $newvalue) {
-                    if (isset($originals[$newvalue])) {
-                        //Okay it matches a full-hash we have, now to check
+            // Extract hashes from response
+            // Loop over each list
+            foreach ($this->processFullLookup($result[1]) as $listname => $chunks) {
+                // Loop over each value in each list
+                foreach ($chunks as $newkey => $fullhash) {
+                    if (isset($originals[$fullhash])) {
+                        // Okay it matches a full-hash we have, now to check
                         // they're from the same chunks
                         foreach ($cloneprefixes as $nnewvalue) {
-                            if ($nnewvalue[1] == $newkey && $nnewvalue[0] == $originals[$newvalue]['prefix']) {
-                                //From same chunks
-                                //Add full hash to database (cache)
-                                $this->addfullhash($nnewvalue[0], $nnewvalue[1], $newvalue, $key);
+                            if ($nnewvalue[1] == $newkey && $nnewvalue[0] == $originals[$fullhash]['prefix']) {
+                                // From same chunks
+                                // Add full hash to database (cache)
+                                $this->addfullhash($nnewvalue[0], $nnewvalue[1], $fullhash, $listname);
                                 return true;
                             }
 
@@ -1325,15 +1342,13 @@ class phpGSB {
     private function subCheck($listname, $prefixlist, $mode) {
         $buildtrunk = $listname . '-s';
         foreach ($prefixlist as $value) {
-            $stm = $this->query("SELECT * FROM `". $buildtrunk . "-prefixes` WHERE " . ($mode == 'prefix' ? '`prefix`' : 'hostkey') . ' = ?', array($value[0]));
+            $stm = $this->query("SELECT id FROM `". $buildtrunk . "-prefixes` WHERE " . 
+                ($mode == 'prefix' ? '`prefix`' : 'hostkey') . ' = ? AND add_chunk_num = ? LIMIT 1', array($value[0], $value[1]));
             // As interpreted from Developer Guide if theres a match in
             // sub list it cancels out the add listing
-            // we'll double check its from the same chunk just to be
-            // pedantic
-            while ($row = $stm->fetch(\PDO::FETCH_ASSOC)) {
-                if (hexdec($row['add_chunk_num']) == $value[1]) {
-                    return true;
-                }
+            // we'll double check its from the same chunk just to be pedantic
+            if ($stm->rowCount() > 0) {
+                return true;
             }
         }
         return false;
@@ -1345,6 +1360,10 @@ class phpGSB {
     private function query($sql, $data = array()) {
         $stm = $this->db->prepare($sql);
         $stm->execute($data);
+        if ($this->debug) {
+            $this->debugLog[] = array($sql, $data, $stm->rowCount());
+            
+        }
         return $stm;
     }
 
@@ -1357,7 +1376,7 @@ class phpGSB {
                           `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
                           `hostkey` varchar(8) NOT NULL,
                           `chunk_num` int(11) unsigned NOT NULL,
-                          `count` varchar(2) NOT NULL DEFAULT '0',
+                          `count` int(11) unsigned NOT NULL DEFAULT '0',
                           `fullhash` char(64) NOT NULL,
                           PRIMARY KEY (`id`),
                           UNIQUE KEY `hostkey_2` (`hostkey`,`chunk_num`,`count`,`fullhash`),
@@ -1384,7 +1403,7 @@ class phpGSB {
                           `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
                           `hostkey` varchar(8) NOT NULL,
                           `chunk_num` int(11) unsigned NOT NULL,
-                          `count` varchar(2) NOT NULL DEFAULT '0',
+                          `count` int(11) unsigned NOT NULL DEFAULT '0',
                           `fullhash` char(64) NOT NULL,
                           PRIMARY KEY (`id`),
                           UNIQUE KEY `hostkey_2` (`hostkey`,`chunk_num`,`count`,`fullhash`),
@@ -1400,7 +1419,7 @@ class phpGSB {
             $this->query("CREATE TABLE IF NOT EXISTS `" . $listname . "-s-prefixes` (
                           `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
                           `hostkey` varchar(8) NOT NULL,
-                          `add_chunk_num` varchar(8) NOT NULL,
+                          `add_chunk_num` int(11) unsigned NOT NULL,
                           `prefix` varchar(8) NOT NULL,
                           `fullhash` char(64) NOT NULL,
                           PRIMARY KEY (`id`),
@@ -1436,11 +1455,14 @@ class phpGSB {
         $matches = array();
         foreach ($lists as $key => $value) {
             $buildtrunk = $value . '-a';
-            $hostsStm = $this->db->prepare('SELECT * FROM `' . $buildtrunk . '-hosts` WHERE hostkey = ?');
+            $hostsStm = $this->db->prepare('SELECT count, hostkey, chunk_num FROM `' . $buildtrunk . '-hosts` WHERE hostkey = ?');
 
             //Loop over each list
             foreach ($hostkeys as $keyinner => $valueinner) {
 
+                if ($this->debug) {
+                    $this->debugLog[] = array('SELECT count, hostkey, chunk_num FROM `' . $buildtrunk . '-hosts` WHERE hostkey = ?', array($valueinner['prefix']), $hostsStm->rowCount());
+                }
                 // Within each list loop over each hostkey
                 $hostsStm->execute(array($valueinner['prefix']));
 
@@ -1455,8 +1477,12 @@ class phpGSB {
                         $params = $prefixParams;
                         $params[] = $row['hostkey'];
 
+                        if ($this->debug) {
+                            $this->debugLog[] = array("SELECT  FROM `" . $buildtrunk . "-prefixes` WHERE  " . $buildprequery . " `hostkey` = ?", $param);
+                        }
+
                         // Check if there are any matching prefixes
-                        $stm = $this->query("SELECT * FROM `" . $buildtrunk . "-prefixes` WHERE  " . $buildprequery . " `hostkey` = ?", $params);
+                        $stm = $this->query("SELECT prefix FROM `" . $buildtrunk . "-prefixes` WHERE  " . $buildprequery . " `hostkey` = ?", $params);
                         if ($stm->rowCount() > 0) {
                             // We found prefix matches
                             $prematches = array();
