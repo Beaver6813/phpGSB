@@ -29,10 +29,11 @@ class phpGSB {
 
     private $db;
 
-    public function __construct($database = false, $username = false, $password = false, $host = "localhost") {
+    public function __construct($database = false, $username = false, $password = false, $host = "localhost", $verbose = false) {
         if ($database && $username) {
             $this->dbConnect($database, $username, $password, $host);
         }
+        $this->verbose = $verbose;
     }
 
     public function __destruct() {
@@ -79,28 +80,33 @@ class phpGSB {
         }
     }
 
-    /*Function to output messages, used instead of echo,
-     will make it easier to have a verbose switch in later
-     releases*/
+    /**
+     * Function to output messages, used instead of echo,
+     * will make it easier to have a verbose switch in later releases
+     */
     private function outputmsg($msg) {
         if ($this->verbose) {
             echo $msg . "\n";
         }
     }
 
-    /*Function to output errors, used instead of echo,
-     will make it easier to have a verbose switch in later
-     releases*/
+    /**
+     * Function to output errors, used instead of echo, 
+     * will make it easier to have a verbose switch in later releases
+     */
     private function fatalerror($msg) {
         if ($this->verbose) {
             print_r($msg);
             echo "\n";
         }
+        
         $this->trans_rollback();
-        die();
+        throw Exception($msg);
     }
 
-    /*Wrapper to connect to database. Simples.*/
+    /**
+     * Wrapper to connect to database.
+     */
     private function dbConnect($database, $username, $password, $host = "localhost") {
         $this->db = new PDO('mysql:host=' . $host . ';dbname=' . $database,
             $username,
@@ -808,11 +814,11 @@ class phpGSB {
             return $checkdword;
         }
 
-        //Nope... maybe in octal or a combination of standard, octal and hex?!
+        // Nope... maybe in octal or a combination of standard, octal and hex?!
         $ipcomponents = explode('.', $ip);
         $ipcomponents[0] = self::hexoct2dec($ipcomponents[0]);
         if (count($ipcomponents) == 2) {
-            //The writers of the RFC docs certainly didn't think about the
+            // The writers of the RFC docs certainly didn't think about the
             // clients! This could be a DWORD mixed with an IP part
             if ($ipcomponents[0] <= 255 && is_int($ipcomponents[0]) && is_int($ipcomponents[1])) {
                 $threeparts = dechex($ipcomponents[1]);
@@ -822,7 +828,7 @@ class phpGSB {
                              self::iphexdec($hexplode[0] . $hexplode[1]) . '.' .
                              self::iphexdec($hexplode[2] . $hexplode[3]) . '.' .
                              self::iphexdec($hexplode[4] . $hexplode[5]);
-                    //Now check if its valid
+                    // Now check if its valid
                     if (self::is_ip($newip)) {
                         return $newip;
                     }
@@ -841,13 +847,13 @@ class phpGSB {
                              $ipcomponents[1] . '.' .
                              self::iphexdec($hexplode[0] . $hexplode[1]) . '.' .
                              self::iphexdec($hexplode[2] . $hexplode[3]);
-                    //Now check if its valid
+                    // Now check if its valid
                     if ($this->is_ip($newip))
                         return $newip;
                 }
             }
         }
-        //If not it may be a combination of hex and octal
+        // If not it may be a combination of hex and octal
         if (count($ipcomponents) >= 4) {
             $tmpcomponents = array(
                 $ipcomponents[2],
@@ -861,10 +867,10 @@ class phpGSB {
             }
 
             array_unshift($tmpcomponents, $ipcomponents[0], $ipcomponents[1]);
-            //Convert back to IP form
+            // Convert back to IP form
             $newip = implode('.', $tmpcomponents);
 
-            //Now check if its valid
+            // Now check if its valid
             if (self::is_ip($newip)) {
                 return $newip;
             }
@@ -957,10 +963,10 @@ class phpGSB {
             $usingip = false;
             $usehost = $hostname;
         }
-        //The developer guide has lowercasing and validating IP other way round
+        // The developer guide has lowercasing and validating IP other way round
         // but its more efficient to
-        //have it this way
-        //Now we move onto canonicalizing the path
+        // have it this way
+        // Now we move onto canonicalizing the path
         $pathparts = explode('/', $path);
         foreach ($pathparts as $key => $value) {
             if ($value == "..") {
@@ -1060,7 +1066,7 @@ class phpGSB {
                 $hosts = array($host . "/");
         }
 
-        //Now make key & key prefix
+        // Now make key & key prefix
         $returnhosts = array();
         foreach ($hosts as $value) {
             $fullhash = self::sha256($value);
@@ -1105,44 +1111,54 @@ class phpGSB {
         if (!$usingip) {
             $hostparts = explode('.', $host);
             $backhostparts = array_reverse($hostparts);
-            if (count($backhostparts) > 5)
+            if (count($backhostparts) > 5) {
                 $maxslice = 5;
-            else
+            } else {
                 $maxslice = count($backhostparts);
+            }
+            
             $topslice = array_slice($backhostparts, 0, $maxslice);
             while ($maxslice > 1) {
                 $hostcombos[] = implode('.', array_reverse($topslice));
                 $maxslice--;
                 $topslice = array_slice($backhostparts, 0, $maxslice);
             }
-        } else
+        } else {
             $hostcombos[] = $host;
+        }
+        
         $hostcombos = array_unique($hostcombos);
         $variations = array();
         if (!empty($path)) {
             $pathparts = explode("/", $path);
-            if (count($pathparts) > 4)
+            if (count($pathparts) > 4) {
                 $upperlimit = 4;
-            else
+            } else {
                 $upperlimit = count($pathparts);
+            }
         }
+        
         foreach ($hostcombos as $key => $value) {
-            if (!empty($query))
+            if (!empty($query)) {
                 $variations[] = $value . $path . '?' . $query;
+            }
+            
             $variations[] = $value . $path;
             if (!empty($path)) {
                 $i = 0;
                 $pathiparts = "";
                 while ($i < $upperlimit) {
-                    if ($i != count($pathparts) - 1)
+                    if ($i != count($pathparts) - 1) {
                         $pathiparts = $pathiparts . $pathparts[$i] . "/";
-                    else
+                    } else {
                         $pathiparts = $pathiparts . $pathparts[$i];
+                    }
                     $variations[] = $value . $pathiparts;
                     $i++;
                 }
             }
         }
+        
         $variations = array_unique($variations);
         return self::makeHashes($variations);
     }
@@ -1177,11 +1193,11 @@ class phpGSB {
     private function addfullhash($prefix, $chunknum, $fullhash, $listname) {
         $buildtrunk = $listname . "-a";
 
-        //First check hosts
+        // First check hosts
         $stm = $this->query("SELECT * FROM `" . $buildtrunk  ."-hosts` WHERE `hostkey` = ? AND `chunk_num` = ? AND fulllhash = '' LIMIT 1", array($prefix, $chunknum));
         if ($stm->rowCount() > 0) {
             $row = $stm->fetch(\PDO::FETCH_ASSOC);
-            //We've got a live one! Insert the full hash for it
+            // We've got a live one! Insert the full hash for it
             $this->query("UPDATE `" . $buildtrunk . "-hosts` SET `fullhash` = ? WHERE `id` = ?", array($fullhash, $row['id']));
         } else {
             $this->query("
@@ -1235,13 +1251,13 @@ class phpGSB {
      * Do a full-hash lookup based on prefixes provided, returns (bool) true on a match and (bool) false on no match.
      */
     private function doFullLookup($prefixes, $originals) {
-        //Store copy of original prefixes
+        // Store copy of original prefixes
         $cloneprefixes = $prefixes;
-        //They should really all have the same prefix size.. we'll just check one
+        // They should really all have the same prefix size.. we'll just check one
         $prefixsize = strlen($prefixes[0][0]) / 2;
         $length = count($prefixes) * $prefixsize;
         foreach ($prefixes as $key => $value) {
-            //Check cache on each iteration (we can return true earlier if we get
+            // Check cache on each iteration (we can return true earlier if we get
             // a match!)
             $cachechk = $this->cacheCheck($value[0]);
             if ($cachechk) {
@@ -1258,7 +1274,7 @@ class phpGSB {
             }
             $prefixes[$key] = pack("H*", $value[0]);
         }
-        //No cache matches so we continue with request
+        // No cache matches so we continue with request
         $body = "$prefixsize:$length\n" . implode("", $prefixes);
 
         $buildopts = array(
@@ -1291,10 +1307,10 @@ class phpGSB {
             }
             return false;
         } elseif ($result[0]['http_code'] == 204 && strlen($result[1]) == 0) {
-            //204 Means no match
+            // 204 Means no match
             return false;
         } else {
-            //"No No No! This just doesn't add up at all!"
+            // "No No No! This just doesn't add up at all!"
             $this->fatalerror("ERROR: Invalid response returned from GSB ({$result[0]['http_code']})");
         }
     }
@@ -1308,9 +1324,9 @@ class phpGSB {
         $buildtrunk = $listname . '-s';
         foreach ($prefixlist as $value) {
             $stm = $this->query("SELECT * FROM `". $buildtrunk . "-prefixes` WHERE " . ($mode == 'prefix' ? '`prefix`' : 'hostkey') . ' = ?', array($value[0]));
-            //As interpreted from Developer Guide if theres a match in
+            // As interpreted from Developer Guide if theres a match in
             // sub list it cancels out the add listing
-            //we'll double check its from the same chunk just to be
+            // we'll double check its from the same chunk just to be
             // pedantic
             while ($row = $stm->fetch(\PDO::FETCH_ASSOC)) {
                 if (hexdec($row['add_chunk_num']) == $value[1]) {
