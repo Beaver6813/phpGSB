@@ -22,12 +22,16 @@ class phpGSB {
         'goog-malware-shaprivate'
     );
 
+    public $serviceScheme = 'https';
+    public $serviceResourcePrefix = 'safebrowsing/';
+    public $serviceDomain = 'safebrowsing.clients.google.com';
+
     private $mainlist = array();
     private $verbose = true;
     private $transtarted = false;
     private $transenabled = true;
     private $pingfilepath = "";
-    
+
     private $debug = false;
     public $debugLog = array();
 
@@ -38,6 +42,23 @@ class phpGSB {
             $this->dbConnect($database, $username, $password, $host);
         }
         $this->verbose = $verbose;
+    }
+
+    /**
+     * Get url to service resource with parameters
+     *
+     * @param string $resource
+     * @return string
+     */
+    public function getServiceUrl($resource = '') {
+        return $this->serviceScheme . '://' . $this->serviceDomain . '/' . $this->serviceResourcePrefix .
+                $resource . '?client=api&apikey=' . $this->apikey . '&appver=' . $this->version . '&pver=' . $this->apiversion;
+    }
+
+    public function setService($domain, $resource_prefix = '', $scheme = 'https') {
+        $this->serviceDomain = $domain;
+        $this->serviceScheme = $scheme;
+        $this->serviceResourcePrefix = $resource_prefix;
     }
 
     public function __destruct() {
@@ -107,7 +128,7 @@ class phpGSB {
     }
 
     /**
-     * Function to output errors, used instead of echo, 
+     * Function to output errors, used instead of echo,
      * will make it easier to have a verbose switch in later releases
      */
     private function fatalerror($msg) {
@@ -115,7 +136,7 @@ class phpGSB {
             print_r($msg);
             echo "\n";
         }
-        
+
         $this->trans_rollback();
         throw new Exception($msg);
     }
@@ -181,7 +202,7 @@ class phpGSB {
         } else {
             $until = time() + $seconds . '||';
         }
-        
+
         file_put_contents($this->pingfilepath . 'nextcheck.dat', $until);
     }
 
@@ -196,7 +217,7 @@ class phpGSB {
         if (time() < $curstatus[0]) {
             $this->fatalerror("Must wait another " . ($curstatus[0] - time()) . " seconds before another request");
         }
-        
+
         $this->log("Allowed to request");
     }
 
@@ -205,11 +226,12 @@ class phpGSB {
      * passed via $options. $followbackoff indicates
      * whether to follow backoff procedures or not
      */
-    private function googleDownloader($url, $options, $followbackoff = false) {
+    private function download($url, $options = NULL, $followbackoff = false) {
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_HEADER, 0);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
 
         if (is_array($options)) {
             curl_setopt_array($ch, $options);
@@ -222,7 +244,7 @@ class phpGSB {
         if ($followbackoff && $info['http_code'] > 299) {
             $this->Backoff($info, $followbackoff);
         }
-        
+
         return array(
             $info,
             $data
@@ -239,7 +261,7 @@ class phpGSB {
         if (!empty($this->adminemail)) {
             mail($this->adminemail, 'Reset Database Request Issued', 'For some crazy unknown reason GSB requested a database reset at ' . time());
         }
-        
+
         foreach ($this->usinglists as $value) {
             $this->query("TRUNCATE TABLE `$value-s-index`");
             $this->query("TRUNCATE TABLE `$value-s-hosts`");
@@ -521,6 +543,12 @@ class phpGSB {
         }
     }
 
+    public function getList() {
+        $url = $this->getServiceUrl('list');
+        $result = $this->download($url);
+        return explode("\n", trim($result[1]));
+    }
+
     /**
      * Main part of updater function, will call all other functions, merely
      * requires the request body, it will then process and save all data as well as checking
@@ -537,9 +565,8 @@ class phpGSB {
             CURLOPT_POSTFIELDS => $body . "\n"
         );
 
-        $result = $this->googleDownloader(
-            "http://safebrowsing.clients.google.com/safebrowsing/downloads?client=api&apikey=" . $this->apikey . "&appver=" . $this->version . "&pver=" . $this->apiversion,
-            $buildopts, "data");
+        $url = $this->getServiceUrl('downloads');
+        $result = $this->download($url, $buildopts, "data");
 
         if (preg_match('/n:(\d+)/', $result[1], $match)) {
             $this->setTimeout($match[1]);
@@ -566,7 +593,7 @@ class phpGSB {
                 $value = trim($elements[2][$id]);
                 switch($type) {
                     case 'u':
-                        $chunkdata = $this->googleDownloader('http://' . $value, false, "data");
+                        $chunkdata = $this->download('http://' . $value, false, "data");
                         $processed = $this->processChunks($chunkdata[1], $listname);
                         $this->log("Saved a chunk file: " . $value);
                         break;
@@ -926,7 +953,7 @@ class phpGSB {
     /**
      * Canonicalize a full URL according to Google's definition.
      */
-    private static function canonicalizeURL($url) {
+    public static function canonicalizeURL($url) {
         // Remove line feeds, return carriages, tabs, vertical tabs
         $finalurl = trim(str_replace(array(
             "\x09",
@@ -1118,7 +1145,7 @@ class phpGSB {
     /**
      * Make URL prefixes for use after a hostkey check
      */
-    private static function makeprefixes($host, $path, $query, $usingip) {
+    public static function makeprefixes($host, $path, $query, $usingip) {
         $prefixes = array();
 
         // Exact hostname in the url
@@ -1132,7 +1159,7 @@ class phpGSB {
             } else {
                 $maxslice = count($backhostparts);
             }
-            
+
             $topslice = array_slice($backhostparts, 0, $maxslice);
             while ($maxslice > 1) {
                 $hostcombos[] = implode('.', array_reverse($topslice));
@@ -1142,7 +1169,7 @@ class phpGSB {
         } else {
             $hostcombos[] = $host;
         }
-        
+
         $hostcombos = array_unique($hostcombos);
         $variations = array();
         if (!empty($path)) {
@@ -1153,12 +1180,12 @@ class phpGSB {
                 $upperlimit = count($pathparts);
             }
         }
-        
+
         foreach ($hostcombos as $key => $value) {
             if (!empty($query)) {
                 $variations[] = $value . $path . '?' . $query;
             }
-            
+
             $variations[] = $value . $path;
             if (!empty($path)) {
                 $i = 0;
@@ -1174,7 +1201,7 @@ class phpGSB {
                 }
             }
         }
-        
+
         $variations = array_unique($variations);
         return self::makeHashes($variations);
     }
@@ -1193,7 +1220,7 @@ class phpGSB {
             $head = substr($data, $offset, $x-$offset);
             $offset = $x+1;
             list($listname, $addchunk, $chunklen) = explode(':', $head, 3);
-            
+
             if ($chunklen > 0) {
                 $extracthash[$listname][$addchunk] = bin2hex(substr($data, $offset, $chunklen));
                 $offset += $chunklen;
@@ -1264,13 +1291,13 @@ class phpGSB {
     }
 
     /**
-     * Do a full-hash lookup based on prefixes provided, 
+     * Do a full-hash lookup based on prefixes provided,
      * returns (bool) true on a match and (bool) false on no match.
      */
     private function doFullLookup($prefixes, $originals) {
         // Store copy of original prefixes
         $cloneprefixes = $prefixes;
-        
+
         // They should really all have the same prefix size.. we'll just check one
         $prefixsize = strlen($prefixes[0][0]) / 2;
         $length = count($prefixes) * $prefixsize;
@@ -1299,10 +1326,10 @@ class phpGSB {
             CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => $body
         );
-        
-        $result = $this->googleDownloader("http://safebrowsing.clients.google.com/safebrowsing/gethash?client=api&apikey=" . 
-                                          $this->apikey . "&appver=" . $this->version . "&pver=" . $this->apiversion, $buildopts, "lookup");
-        
+
+        $url = $this->getServiceUrl('gethash');
+
+        $result = $this->download($url, $buildopts, "lookup");
         if ($result[0]['http_code'] == 200 && !empty($result[1])) {
             // Extract hashes from response
             // Loop over each list
@@ -1342,7 +1369,7 @@ class phpGSB {
     private function subCheck($listname, $prefixlist, $mode) {
         $buildtrunk = $listname . '-s';
         foreach ($prefixlist as $value) {
-            $stm = $this->query("SELECT id FROM `". $buildtrunk . "-prefixes` WHERE " . 
+            $stm = $this->query("SELECT id FROM `". $buildtrunk . "-prefixes` WHERE " .
                 ($mode == 'prefix' ? '`prefix`' : 'hostkey') . ' = ? AND add_chunk_num = ? LIMIT 1', array($value[0], $value[1]));
             // As interpreted from Developer Guide if theres a match in
             // sub list it cancels out the add listing
@@ -1362,7 +1389,7 @@ class phpGSB {
         $stm->execute($data);
         if ($this->debug) {
             $this->debugLog[] = array($sql, $data, $stm->rowCount());
-            
+
         }
         return $stm;
     }
@@ -1451,6 +1478,9 @@ class phpGSB {
             $prefixParams[] = $prefix['prefix'];
         }
         $buildprequery = implode("OR", $buildprequery);
+        if (!empty($buildprequery))  {
+            $buildprequery .= ' AND';
+        }
 
         $matches = array();
         foreach ($lists as $key => $listname) {
