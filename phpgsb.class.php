@@ -617,7 +617,7 @@ class phpGSB {
     /**
      * Shortcut to run updater
      */
-    public function runUpdate($skipCheckTimeout = false) {
+    public function runUpdate($skipCheckTimeout = false, $skipSetTimeout = false) {
         if (!$skipCheckTimeout) {
             $this->checkTimeout('data');
         }
@@ -627,7 +627,7 @@ class phpGSB {
         }
 
         $this->log("Using $require");
-        $this->getData($require, $skipCheckTimeout);
+        $this->getData($require, $skipSetTimeout);
     }
 
     //LOOKUP FUNCTIONS
