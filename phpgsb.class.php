@@ -1521,7 +1521,7 @@ class phpGSB {
                             // We found prefix matches
                             $prematches = array();
                             $prelookup = array();
-                            while ($rowPrefix = $hostsStm->fetch(\PDO::FETCH_ASSOC)) {
+                            while ($rowPrefix = $stm->fetch(\PDO::FETCH_ASSOC)) {
                                 $prematches[] = array(
                                     $rowPrefix['prefix'],
                                     $row['chunk_num']
