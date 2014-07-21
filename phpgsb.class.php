@@ -554,7 +554,7 @@ class phpGSB {
      * requires the request body, it will then process and save all data as well as checking
      * for ADD-DEL and SUB-DEL, runs silently so won't return anything on success
      */
-    private function getData($body) {
+    private function getData($body, $skipSetTimeout = false) {
         if (empty($body)) {
             return $this->fatalerror("Missing a body for data request");
         }
@@ -569,7 +569,9 @@ class phpGSB {
         $result = $this->download($url, $buildopts, "data");
 
         if (preg_match('/n:(\d+)/', $result[1], $match)) {
-            $this->setTimeout($match[1]);
+            if (!$skipSetTimeout) {
+               $this->setTimeout($match[1]);
+            }
         } else {
             return $this->fatalerror("Missing timeout");
         }
@@ -615,8 +617,10 @@ class phpGSB {
     /**
      * Shortcut to run updater
      */
-    public function runUpdate() {
-        $this->checkTimeout('data');
+    public function runUpdate($skipCheckTimeout = false) {
+        if (!$skipCheckTimeout) {
+            $this->checkTimeout('data');
+        }
         $require = "";
         foreach ($this->usinglists as $value) {
             $require .= $this->formattedRequest($value);
