@@ -627,7 +627,7 @@ class phpGSB {
         }
 
         $this->log("Using $require");
-        $this->getData($require);
+        $this->getData($require, $skipCheckTimeout);
     }
 
     //LOOKUP FUNCTIONS
