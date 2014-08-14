@@ -1253,13 +1253,14 @@ class phpGSB {
                     `" . $buildtrunk  ."-prefixes` p
                     JOIN `" . $buildtrunk . "-hosts` h ON (h.hostkey = p.hostkey)
                 SET
-                    fullhash = ?
+                    p.fullhash = ?,
+                    h.fullhash = ?
                 WHERE
                     p.`prefix` = ? AND
                     p.fullhash = '' AND
                     h.chunk_num = ? AND
                     h.count > 0
-                    ", array($fullhash, $prefix, $chunknum));
+                    ", array($fullhash, $fullhash, $prefix, $chunknum));
         }
     }
 
