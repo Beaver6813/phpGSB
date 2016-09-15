@@ -398,12 +398,12 @@ class phpGSB {
             $buildindexValues[] = $data['chunklen'];
 
             foreach ($data['real'] as $newkey => $newvalue) {
-                $buildhost[] = "(?, ?, ?, '')";
+                $buildhost[] = "(x?, ?, ?, '')";
                 $buildhostValues[] = $newvalue['hostkey'];
                 $buildhostValues[] = $data['chunknum'];
                 $buildhostValues[] = $newvalue['count'];
                 foreach ($newvalue['pairs'] as $innerkey => $innervalue) {
-                    $buildpairs[] = "(?, " . ($type == 'SUB' ? '?, ' : '') . "?, '')";
+                    $buildpairs[] = "(x?, " . ($type == 'SUB' ? '?, ' : '') . "x?, '')";
                     $buildpairsValues[] = $newvalue['hostkey'];
                     if ($type == 'SUB') {
                        $buildpairsValues[] = $innervalue['addchunknum'];
@@ -529,14 +529,14 @@ class phpGSB {
 
         // Select all host keys that match chunks (we'll delete them after but we
         // need the hostkeys list!)
-        $stm = $this->query('SELECT `hostkey` FROM `' . $buildtrunk . '-hosts` WHERE ' . $clause . " AND hostkey != ''", $params);
+        $stm = $this->query('SELECT HEX(`hostkey`) hostkey FROM `' . $buildtrunk . '-hosts` WHERE ' . $clause . " AND hostkey != ''", $params);
         $buildprefixdel = array();
         while ($row = $stm->fetch(\PDO::FETCH_ASSOC)) {
             $buildprefixdel[] = $row['hostkey'];
         }
 
         if (!empty($buildprefixdel)) {
-            $this->query('DELETE FROM `' . $buildtrunk . '-hosts` WHERE hostkey IN (' . substr(str_repeat('?, ', count($buildprefixdel)), 0, -2) . ')', $buildprefixdel);
+            $this->query('DELETE FROM `' . $buildtrunk . '-hosts` WHERE hostkey IN (' . substr(str_repeat('x?, ', count($buildprefixdel)), 0, -2) . ')', $buildprefixdel);
 
             //Delete all matching hostkeys
             $this->query('DELETE FROM `' . $buildtrunk . '-hosts` WHERE ' . $clause, $params);
@@ -1242,21 +1242,21 @@ class phpGSB {
         $buildtrunk = $listname . "-a";
 
         // First check hosts
-        $stm = $this->query("SELECT * FROM `" . $buildtrunk  ."-hosts` WHERE `hostkey` = ? AND `chunk_num` = ? AND fullhash = '' LIMIT 1", array($prefix, $chunknum));
+        $stm = $this->query("SELECT id, HEX(hostkey) hostkey, chunk_num, count, HEX(fullhash) fullhash FROM `" . $buildtrunk  ."-hosts` WHERE `hostkey` = x? AND `chunk_num` = ? AND fullhash = '' LIMIT 1", array($prefix, $chunknum));
         if ($stm->rowCount() > 0) {
             $row = $stm->fetch(\PDO::FETCH_ASSOC);
             // We've got a live one! Insert the full hash for it
-            $this->query("UPDATE `" . $buildtrunk . "-hosts` SET `fullhash` = ? WHERE `id` = ?", array($fullhash, $row['id']));
+            $this->query("UPDATE `" . $buildtrunk . "-hosts` SET `fullhash` = x? WHERE `id` = ?", array($fullhash, $row['id']));
         } else {
             $this->query("
                 UPDATE
                     `" . $buildtrunk  ."-prefixes` p
                     JOIN `" . $buildtrunk . "-hosts` h ON (h.hostkey = p.hostkey)
                 SET
-                    p.fullhash = ?,
-                    h.fullhash = ?
+                    p.fullhash = x?,
+                    h.fullhash = x?
                 WHERE
-                    p.`prefix` = ? AND
+                    p.`prefix` = x? AND
                     p.fullhash = '' AND
                     h.chunk_num = ? AND
                     h.count > 0
@@ -1270,7 +1270,7 @@ class phpGSB {
     private function cacheCheck($prefix) {
         foreach ($this->usinglists as $value) {
             $buildtrunk = $value . "-a";
-            $stm = $this->query("SELECT * FROM `" . $buildtrunk . "-hosts` WHERE `hostkey` = ? AND `fullhash` != ''", array($prefix));
+            $stm = $this->query("SELECT id, HEX(hostkey) hostkey, chunk_num, count, HEX(fullhash) fullhash FROM `" . $buildtrunk . "-hosts` WHERE `hostkey` = x? AND `fullhash` != ''", array($prefix));
             if ($stm->rowCount() > 0) {
                 $row = $stm->fetch(\PDO::FETCH_ASSOC);
                 return array(
@@ -1279,10 +1279,10 @@ class phpGSB {
                 );
             }
 
-            $stm = $this->query("SELECT p.fullhash, h.chunk_num FROM
+            $stm = $this->query("SELECT HEX(p.fullhash) fullhash, h.chunk_num FROM
                                 `" . $buildtrunk . "-prefixes` p
                                 JOIN `" . $buildtrunk . "-hosts` h ON (p.hostkey = h.hostkey)
-                                WHERE p.`prefix` = ? AND p.`fullhash` != '' AND h.count > 0", array($prefix));
+                                WHERE p.`prefix` = x? AND p.`fullhash` != '' AND h.count > 0", array($prefix));
             if ($stm->rowCount() > 0) {
                 $row = $stm->fetch(\PDO::FETCH_ASSOC);
                 return array(
@@ -1375,7 +1375,7 @@ class phpGSB {
         $buildtrunk = $listname . '-s';
         foreach ($prefixlist as $value) {
             $stm = $this->query("SELECT id FROM `". $buildtrunk . "-prefixes` WHERE " .
-                ($mode == 'prefix' ? '`prefix`' : 'hostkey') . ' = ? AND add_chunk_num = ? LIMIT 1', array($value[0], $value[1]));
+                ($mode == 'prefix' ? '`prefix`' : 'hostkey') . ' = x? AND add_chunk_num = ? LIMIT 1', array($value[0], $value[1]));
             // As interpreted from Developer Guide if theres a match in
             // sub list it cancels out the add listing
             // we'll double check its from the same chunk just to be pedantic
@@ -1406,10 +1406,10 @@ class phpGSB {
         foreach ($this->usinglists as $listname) {
             $this->query("CREATE TABLE IF NOT EXISTS `" . $listname . "-a-hosts` (
                           `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
-                          `hostkey` varchar(8) NOT NULL,
+                          `hostkey` BINARY(4) NOT NULL,
                           `chunk_num` int(11) unsigned NOT NULL,
                           `count` int(11) unsigned NOT NULL DEFAULT '0',
-                          `fullhash` char(64) NOT NULL,
+                          `fullhash` BINARY(32) NOT NULL,
                           PRIMARY KEY (`id`),
                           UNIQUE KEY `hostkey_2` (`hostkey`,`chunk_num`,`count`,`fullhash`),
                           KEY `hostkey` (`hostkey`)
@@ -1423,9 +1423,9 @@ class phpGSB {
 
             $this->query("CREATE TABLE IF NOT EXISTS `" . $listname . "-a-prefixes` (
                           `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
-                          `hostkey` varchar(8) NOT NULL,
-                          `prefix` varchar(8) NOT NULL,
-                          `fullhash` char(64) NOT NULL,
+                          `hostkey` BINARY(4) NOT NULL,
+                          `prefix` BINARY(4) NOT NULL,
+                          `fullhash` BINARY(32) NOT NULL,
                           PRIMARY KEY (`id`),
                           UNIQUE KEY `hostkey_2` (`hostkey`,`prefix`),
                           KEY `hostkey` (`hostkey`)
@@ -1433,10 +1433,10 @@ class phpGSB {
 
             $this->query("CREATE TABLE IF NOT EXISTS `" . $listname . "-s-hosts` (
                           `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
-                          `hostkey` varchar(8) NOT NULL,
+                          `hostkey` BINARY(4) NOT NULL,
                           `chunk_num` int(11) unsigned NOT NULL,
                           `count` int(11) unsigned NOT NULL DEFAULT '0',
-                          `fullhash` char(64) NOT NULL,
+                          `fullhash` BINARY(32) NOT NULL,
                           PRIMARY KEY (`id`),
                           UNIQUE KEY `hostkey_2` (`hostkey`,`chunk_num`,`count`,`fullhash`),
                           KEY `hostkey` (`hostkey`)
@@ -1450,10 +1450,10 @@ class phpGSB {
 
             $this->query("CREATE TABLE IF NOT EXISTS `" . $listname . "-s-prefixes` (
                           `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
-                          `hostkey` varchar(8) NOT NULL,
+                          `hostkey` BINARY(4) NOT NULL,
                           `add_chunk_num` int(11) unsigned NOT NULL,
-                          `prefix` varchar(8) NOT NULL,
-                          `fullhash` char(64) NOT NULL,
+                          `prefix` BINARY(4) NOT NULL,
+                          `fullhash` BINARY(32) NOT NULL,
                           PRIMARY KEY (`id`),
                           UNIQUE KEY `hostkey_2` (`hostkey`,`add_chunk_num`,`prefix`),
                           KEY `hostkey` (`hostkey`)
@@ -1479,7 +1479,7 @@ class phpGSB {
         $prefixParams = array();
         $buildprequery = array();
         foreach ($prefixes as $prefix) {
-            $buildprequery[] = " `prefix` = ?";
+            $buildprequery[] = " `prefix` = x?";
             $prefixParams[] = $prefix['prefix'];
         }
         $buildprequery = implode("OR", $buildprequery);
@@ -1490,13 +1490,13 @@ class phpGSB {
         $matches = array();
         foreach ($lists as $key => $listname) {
             $buildtrunk = $listname . '-a';
-            $hostsStm = $this->db->prepare('SELECT count, hostkey, chunk_num FROM `' . $buildtrunk . '-hosts` WHERE hostkey = ?');
+            $hostsStm = $this->db->prepare('SELECT count, HEX(hostkey) hostkey, chunk_num FROM `' . $buildtrunk . '-hosts` WHERE hostkey = x?');
 
             //Loop over each list
             foreach ($hostkeys as $keyinner => $valueinner) {
 
                 if ($this->debug) {
-                    $this->debugLog[] = array('SELECT count, hostkey, chunk_num FROM `' . $buildtrunk . '-hosts` WHERE hostkey = ?', array($valueinner['prefix']), $hostsStm->rowCount());
+                    $this->debugLog[] = array('SELECT count, HEX(hostkey) hostkey, chunk_num FROM `' . $buildtrunk . '-hosts` WHERE hostkey = x?', array($valueinner['prefix']), $hostsStm->rowCount());
                 }
                 // Within each list loop over each hostkey
                 $hostsStm->execute(array($valueinner['prefix']));
@@ -1513,11 +1513,11 @@ class phpGSB {
                         $params[] = $row['hostkey'];
 
                         if ($this->debug) {
-                            $this->debugLog[] = array("SELECT  FROM `" . $buildtrunk . "-prefixes` WHERE  " . $buildprequery . " `hostkey` = ?", $param);
+                            $this->debugLog[] = array("SELECT  FROM `" . $buildtrunk . "-prefixes` WHERE  " . $buildprequery . " `hostkey` = x?", $param);
                         }
 
                         // Check if there are any matching prefixes
-                        $stm = $this->query("SELECT prefix FROM `" . $buildtrunk . "-prefixes` WHERE  " . $buildprequery . " `hostkey` = ?", $params);
+                        $stm = $this->query("SELECT HEX(prefix) prefix FROM `" . $buildtrunk . "-prefixes` WHERE  " . $buildprequery . " `hostkey` = x?", $params);
                         if ($stm->rowCount() > 0) {
                             // We found prefix matches
                             $prematches = array();
