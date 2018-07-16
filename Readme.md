@@ -19,7 +19,7 @@ The main class is definitely not as efficient as it could be and has developed v
 $ composer require samcleaver/phpgsb
 ```
 
-* You could manually download phpgsb by this link: https://github.com/samcleaver/phpGSB/archive/0.2.6.zip
+* You could manually download phpgsb by this link: https://github.com/samcleaver/phpGSB.git
 
 ## Installation
 
