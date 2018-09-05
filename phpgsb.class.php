@@ -25,8 +25,14 @@ class phpGSB
     private $dbLink; // mysql connection link
     //GENERIC FUNCTIONS (USED BY BOTH LOOKUP AND UPDATER)
     /*Automatically connect to database on calling class*/
-    public function __construct($database = false, $username = false, $password = false, $host = "localhost", $port = 3306, $verbose = true)
-    {
+    public function __construct(
+        $database = false,
+        $username = false,
+        $password = false,
+        $host = "localhost",
+        $port = 3306,
+        $verbose = true
+    ) {
         $this->phpGSB($database, $username, $password, $host, $port, $verbose);
     }
 
@@ -46,7 +52,6 @@ class phpGSB
         if ($database && $username) {
             $this->dbConnect($database, $username, $password, $host, $port);
         }
-
     }
 
     public function close()
