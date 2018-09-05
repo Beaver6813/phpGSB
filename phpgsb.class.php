@@ -6,6 +6,10 @@ Released under New BSD License (see LICENSE)
 Copyright (c) 2010-2015, Sam Cleaver (Beaver6813, Beaver6813.com)
 All rights reserved.
  */
+
+use Illuminate\Log\Writer as LogWriter;
+use Monolog\Logger as MonologLogger;
+
 class phpGSB
 {
     public $apikey      = "";
@@ -14,9 +18,15 @@ class phpGSB
     //DO NOT CHANGE API VERSION
     public $apiversion = "2.2";
 
-    public $ob           = "";
-    public $adminemail   = "";
-    public $usinglists   = array('googpub-phish-shavar', 'goog-malware-shavar', 'goog-unwanted-shavar');
+    private $logger;
+
+    public $ob         = "";
+    public $adminemail = "";
+    public $usinglists = array(
+        'googpub-phish-shavar',
+        'goog-malware-shavar',
+        'goog-unwanted-shavar',
+    );
     public $mainlist     = array();
     public $verbose      = true;
     public $transtarted  = false;
@@ -33,7 +43,11 @@ class phpGSB
         $port = 3306,
         $verbose = true
     ) {
-        $this->phpGSB($database, $username, $password, $host, $port, $verbose);
+        $this->phpGSB(
+            $database, $username,
+            $password, $host,
+            $port, $verbose
+        );
     }
 
     public function phpGSB(
@@ -48,9 +62,21 @@ class phpGSB
             $this->silent();
         }
 
+        // Create new writer instance with dependencies
+        $this->logger = new LogWriter(
+            new MonologLogger('App Logger')
+        );
+
+        // Setup log file location
+        $this->logger->useFiles('/logs/app.log');
+
         $this->outputmsg("phpGSB Loaded");
+
         if ($database && $username) {
-            $this->dbConnect($database, $username, $password, $host, $port);
+            $this->dbConnect(
+                $database, $username,
+                $password, $host, $port
+            );
         }
     }
 
@@ -107,12 +133,13 @@ class phpGSB
     releases*/
     public function outputmsg($msg)
     {
-        // if ($this->verbose) {
-        //     ob_start();
-        //     echo $msg . '...<br/>';
-        //     $this->ob .= ob_get_contents();
-        //     ob_end_flush();
-        // }
+        if ($this->verbose) {
+            ob_start();
+            // echo $msg . '...<br/>';
+            $this->logger->info($msg);
+            $this->ob .= ob_get_contents();
+            ob_end_flush();
+        }
     }
 
     /*Function to output errors, used instead of echo,
@@ -122,8 +149,9 @@ class phpGSB
     {
         if ($this->verbose) {
             ob_start();
-            print_r($msg);
-            echo '...<br/>';
+            // print_r($msg);
+            // echo '...<br/>';
+            $this->logger->error($msg);
             $this->ob .= ob_get_contents();
             ob_end_flush();
         }

@@ -10,8 +10,9 @@
         "homepage": "https://github.com/atefBB"
     }],
     "homepage": "https://github.com/atefBB/phpgsb",
-    "require":{
-        "php":">=5.3.0"
+    "require": {
+        "php": ">=5.3.0",
+        "illuminate/log": "~5.5.0"
     },
     "autoload": {
         "classmap": ["phpgsb.class.php"]
